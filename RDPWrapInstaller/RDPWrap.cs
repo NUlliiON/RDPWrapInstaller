@@ -39,12 +39,14 @@ namespace RDPWrapInstaller
         private static Version _fv;
         private static bool _online = true;
         private static List<ServiceController> _sharedSvcs;
+        private static Assembly _assembly;
 
         public static string Logs => _logger.Logs;
 
         static RDPWrap()
         {
             _logger = new RDPWrapLogger();
+            _assembly = Assembly.GetExecutingAssembly();
         }
 
         private static void SvcConfigStart(string svcName, ServiceStartMode svcStartMode)
@@ -130,19 +132,18 @@ namespace RDPWrapInstaller
         {
             _logger.Log(LogType.Information, "Requesting resource: " + resourceType);
 
-            var assembly = Assembly.GetExecutingAssembly();
             string resPrefix = "RDPWrapInstaller.Files.";
 
             using var dataStream = resourceType switch
             {
-                ResourceType.RDPW32 => assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
-                ResourceType.RDPW64 => assembly.GetManifestResourceStream($"{resPrefix}.RDPW64.dll"),
-                ResourceType.RFXVMT32 => assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
-                ResourceType.RFXVMT64 => assembly.GetManifestResourceStream($"{resPrefix}.RFXVMT64.dll"),
-                ResourceType.RDPCLIP6032 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6032.dll"),
-                ResourceType.RDPCLIP6132 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6132.dll"),
-                ResourceType.RDPCLIP6064 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6064.dll"),
-                ResourceType.RDPCLIP6164 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6164.dll"),
+                ResourceType.RDPW32 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
+                ResourceType.RDPW64 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW64.dll"),
+                ResourceType.RFXVMT32 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
+                ResourceType.RFXVMT64 => _assembly.GetManifestResourceStream($"{resPrefix}.RFXVMT64.dll"),
+                ResourceType.RDPCLIP6032 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6032.dll"),
+                ResourceType.RDPCLIP6132 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6132.dll"),
+                ResourceType.RDPCLIP6064 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6064.dll"),
+                ResourceType.RDPCLIP6164 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6164.dll"),
                 _ => throw new ArgumentOutOfRangeException()
             };
             _logger.Log(LogType.Information, "Resource fetched");
@@ -291,55 +292,6 @@ namespace RDPWrapInstaller
             }
         }
 
-        //public bool AddPrivilege(string SePriv)
-        //{
-        //    uint ReturnLength;
-        //    Structs.LUID SeNameValue = new Structs.LUID();
-        //    IntPtr hToken;
-        //    if (!Methods.OpenProcessToken
-        //        (Process.GetCurrentProcess().Handle,
-        //        Consts.TOKEN_ADJUST_PRIVILEGES | Consts.TOKEN_QUERY, out hToken))
-        //    {
-        //        AddLog(LogType., "OpenProcessToken error: " + Marshal.GetLastWin32Error());
-        //        return false;
-        //    }
-        //    else
-        //        AddLog(LogType., "OpenProcessToken");
-
-        //    if (!Methods.LookupPrivilegeValue(null, SePriv, ref SeNameValue))
-        //    {
-        //        AddLog(LogType., "LookupPrivilegeValue error: " + Marshal.GetLastWin32Error());
-        //        return false;
-        //    }
-        //    else
-        //        AddLog(LogType., "LookupPrivilegeValue");
-
-        //    Structs.TOKEN_PRIVILEGES tkp = new Structs.TOKEN_PRIVILEGES();
-        //    tkp.PrivilegeCount = 1;
-        //    if (tkp.Privileges == null)
-        //    {
-        //        tkp.Privileges = new Structs.LUID_AND_ATTRIBUTES[42];
-        //    }
-        //    tkp.Privileges[0].Luid = SeNameValue;
-        //    tkp.Privileges[0].Attributes = Consts.SE_PRIVILEGE_ENABLED;
-
-        //    if (!Methods.AdjustTokenPrivileges(
-        //        hToken,
-        //        false,
-        //        ref tkp,
-        //        Convert.ToUInt32(Marshal.SizeOf(tkp)),
-        //        ref tkp,
-        //        out ReturnLength))
-        //    {
-        //        AddLog(LogType., "AdjustTokenPrivileges error: " + Marshal.GetLastWin32Error());
-        //        return false;
-        //    }
-        //    else
-        //        AddLog(LogType., "AdjustTokenPrivileges");
-
-        //    return true;
-        //}
-
         private static void DeleteFiles()
         {
             string fullPath = ExpandPath(_termServicePath);
@@ -360,11 +312,10 @@ namespace RDPWrapInstaller
 
         private static void KillProcess(int pid)
         {
-            //ServiceController svcCtrl = new ServiceController(svcName);
             try
             {
-                if (Process.GetProcessById(pid) != null)
-                    Process.GetProcessById(pid).Kill();
+                if (Process.GetProcessById(pid) is var proc)
+                    proc.Kill();
             }
             catch (Exception ex)
             {
@@ -424,12 +375,12 @@ namespace RDPWrapInstaller
         private static byte[] GitIniFile()
         {
             var client = new WebClient();
-            // TODO: replace with custom link
+            // TODO: make this link 'customizable'
             return client.DownloadData("https://raw.githubusercontent.com/asmtron/rdpwrap/master/res/rdpwrap.ini");
         }
 
         /// <summary>
-        /// Получение всех сервисов которые используют процесс занятый сервисом serviceName
+        /// Get all services that use the process occupied by the service <see cref="serviceName"/>
         /// </summary>
         /// <param name="serviceName"></param>
         /// <param name="serviceUsingPid"></param>
@@ -449,9 +400,9 @@ namespace RDPWrapInstaller
                         sharedSvcTxt += string.Format("{0}, ", svc.ServiceName);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-
+                    _logger.Log(LogType.Warning, "Something went wrong while getting the process id.");
                 }
             }
 
