@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Reflection;
 using System.ServiceProcess;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Win32;
 using RDPWrapInstaller.Helpers;
 
@@ -123,41 +125,36 @@ namespace RDPWrapInstaller
             }
         }
 
-        private static byte[] GetResource(ResourceType resourceType)
+        private static async Task<byte[]> GetResource(ResourceType resourceType)
         {
-            byte[] data = resourceType switch
-            {
-                ResourceType.RDPW32 => new byte[]
-                // case "rdpw32":
-                //     client.DownloadFile(baseUrl + "RDPW32.dll", path);
-                //     break;
-                // case "rdpclip6032":
-                //     client.DownloadFile(baseUrl + "RDPCLIP6032.exe", path);
-                //     break;
-                // case "rdpclip6132":
-                //     client.DownloadFile(baseUrl + "RDPCLIP6132.exe", path);
-                //     break;
-                // case "rfxvmt32":
-                //     client.DownloadFile(baseUrl + "RFXVMT32.dll", path);
-                //     break;
-                // case "rdpw64":
-                //     client.DownloadFile(baseUrl + "RDPW64.dll", path);
-                //     break;
-                // case "rdpclip6064":
-                //     client.DownloadFile(baseUrl + "RDPCLIP6064.exe", path);
-                //     break;
-                // case "rdpclip6164":
-                //     client.DownloadFile(baseUrl + "RDPCLIP6164.exe", path);
-                //     break;
-                // case "rfxvmt64":
-                //     client.DownloadFile(baseUrl + "RFXVMT64.dll", path);
-                //     break;
-            }
+            _logger.Log(LogType.Information, "Requesting resource: " + resourceType);
 
-            _logger.Log(LogType.Information, "Resource type: " + resourceType);
+            var assembly = Assembly.GetExecutingAssembly();
+            string resPrefix = "RDPWrapInstaller.Files.";
+
+            using var dataStream = resourceType switch
+            {
+                ResourceType.RDPW32 => assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
+                ResourceType.RDPW64 => assembly.GetManifestResourceStream($"{resPrefix}.RDPW64.dll"),
+                ResourceType.RFXVMT32 => assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
+                ResourceType.RFXVMT64 => assembly.GetManifestResourceStream($"{resPrefix}.RFXVMT64.dll"),
+                ResourceType.RDPCLIP6032 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6032.dll"),
+                ResourceType.RDPCLIP6132 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6132.dll"),
+                ResourceType.RDPCLIP6064 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6064.dll"),
+                ResourceType.RDPCLIP6164 => assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6164.dll"),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+            _logger.Log(LogType.Information, "Resource fetched");
+
+            var memStream = new MemoryStream();
+            await dataStream.CopyToAsync(memStream);
+            
+            _logger.Log(LogType.Information, "Resource writed");
+
+            return memStream.ToArray();
         }
 
-        private static void ExtractFiles()
+        private static async Task ExtractFiles()
         {
             string super = Path.GetDirectoryName(ExpandPath(_wrapPath));
             if (!Directory.Exists(super))
@@ -181,41 +178,47 @@ namespace RDPWrapInstaller
                 _logger.Log(LogType.Information, "Latest INI file -> " + s);
             }
 
-            string rdpClipRes = "";
-            string rfxvmtRes = "";
+            ResourceType? rdpClipResType = null;
+            ResourceType? rfxvmtResType = null;
             if (_procArch == 32)
             {
-                GetResource("rdpw32", ExpandPath(_wrapPath));
+                byte[] rdpw32Dll = await GetResource(ResourceType.RDPW32);
+                await File.WriteAllBytesAsync(ExpandPath(_wrapPath), rdpw32Dll);
+                
                 if (_fv.Major == 6 && _fv.Minor == 0)
-                    rdpClipRes = "rdpclip6032";
-                if (_fv.Major == 6 && _fv.Minor == 1)
-                    rdpClipRes = "rdpclip6132";
+                    rdpClipResType = ResourceType.RDPCLIP6032;
+                else if (_fv.Major == 6 && _fv.Minor == 1)
+                    rdpClipResType = ResourceType.RDPCLIP6132;
                 if (_fv.Major == 10 && _fv.Minor == 0)
-                    rfxvmtRes = "rfxvmt32";
+                    rfxvmtResType = ResourceType.RFXVMT32;
             }
             else if (_procArch == 64)
             {
-                GetResource("rdpw64", ExpandPath(_wrapPath));
+                byte[] rdpw64Dll = await GetResource(ResourceType.RDPW64);
+                await File.WriteAllBytesAsync(ExpandPath(_wrapPath), rdpw64Dll);
+                
                 if (_fv.Major == 6 && _fv.Minor == 0)
-                    rdpClipRes = "rdpclip6064";
-                if (_fv.Major == 6 && _fv.Minor == 1)
-                    rdpClipRes = "rdpclip6164";
+                    rdpClipResType = ResourceType.RDPCLIP6064;
+                else if (_fv.Major == 6 && _fv.Minor == 1)
+                    rdpClipResType = ResourceType.RDPCLIP6164;
                 if (_fv.Major == 10 && _fv.Minor == 0)
-                    rfxvmtRes = "rfxvmt64";
+                    rfxvmtResType = ResourceType.RFXVMT64;
             }
 
-            if (rdpClipRes != "")
+            if (rdpClipResType != null)
             {
                 if (!File.Exists(ExpandPath(@"%SystemRoot%\System32\rdpclip.exe")))
                 {
-                    GetResource(rdpClipRes, ExpandPath(@"%SystemRoot%\System32\rdpclip.exe"));
+                    var rdpClipExe = await GetResource(rdpClipResType.Value);
+                    await File.WriteAllBytesAsync(ExpandPath(@"%SystemRoot%\System32\rdpclip.exe"), rdpClipExe);
                 }
             }
-            if (rfxvmtRes != "")
+            if (rfxvmtResType != null)
             {
                 if (!File.Exists(ExpandPath(@"%SystemRoot%\System32\rfxvmt.dll")))
                 {
-                    GetResource(rfxvmtRes, ExpandPath(@"%SystemRoot%\System32\rfxvmt.dll"));
+                    var rfxvmtDll = await GetResource(rfxvmtResType.Value);
+                    await File.WriteAllBytesAsync(ExpandPath(@"%SystemRoot%\System32\rfxvmt.dll"), rfxvmtDll);
                 }
             }
         }
@@ -583,7 +586,7 @@ namespace RDPWrapInstaller
             //return path;
         }
 
-        public static void Install()
+        public static async Task Install()
         {
             if (!CheckWin32Version(6, 0))
             {
@@ -613,7 +616,7 @@ namespace RDPWrapInstaller
 
             _logger.Log(LogType.Information, "Extracting files...");
             _online = true;
-            ExtractFiles();
+            await ExtractFiles();
 
             _logger.Log(LogType.Information, "Configuring library...");
             SetWrapperDll();
