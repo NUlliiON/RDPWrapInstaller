@@ -73,35 +73,36 @@ namespace RDPWrapInstaller
             }
         }
 
-        private static void ExecWait(string cmdline)
+        private static Task ExecuteAndWait(string cmdline)
         {
-            Process proc = new Process();
-            ProcessStartInfo procInfo = new ProcessStartInfo();
-            procInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            procInfo.UseShellExecute = false;
-            procInfo.CreateNoWindow = true;
-            procInfo.WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System);
-            procInfo.RedirectStandardOutput = true;
-            procInfo.FileName = "cmd.exe";
-            procInfo.Arguments = "/C " + cmdline;
-            procInfo.Verb = "runas";
+            var proc = new Process();
+            var procInfo = new ProcessStartInfo()
+            {
+                WindowStyle = ProcessWindowStyle.Hidden,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System),
+                RedirectStandardOutput = true,
+                FileName = "cmd.exe",
+                Arguments = "/C " + cmdline,
+                Verb = "runas"
+            };
             proc.StartInfo = procInfo;
             proc.Start();
-            proc.WaitForExit();
+            return proc.WaitForExitAsync();
         }
 
-        private static void TsConfigFirewall(bool enable)
+        private static async Task TsConfigFirewall(bool enable)
         {
             if (enable)
             {
-                ExecWait("netsh advfirewall firewall add rule name=\"Remote Desktop\" dir=in protocol=tcp localport=3389 profile=any action=allow");
-                ExecWait("netsh advfirewall firewall add rule name=\"Remote Desktop\" dir=in protocol=udp localport=3389 profile=any action=allow");
+                await ExecuteAndWait("netsh advfirewall firewall add rule name=\"Remote Desktop\" dir=in protocol=tcp localport=3389 profile=any action=allow");
+                await ExecuteAndWait("netsh advfirewall firewall add rule name=\"Remote Desktop\" dir=in protocol=udp localport=3389 profile=any action=allow");
             }
             else
             {
-                ExecWait("netsh advfirewall firewall delete rule name=\"Remote Desktop\"");
+                await ExecuteAndWait("netsh advfirewall firewall delete rule name=\"Remote Desktop\"");
             }
-            // netsh advfirewall firewall add rule name="Remote Desktop" dir=in protocol=tcp localport=3389 profile=any action=allow
         }
 
         private static void TsConfigRegistry(bool enable)
@@ -257,7 +258,7 @@ namespace RDPWrapInstaller
                 RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\TermService\Parameters\ServiceDll", _wrapPath, RegistryValueKind.ExpandString);
 
                 if (_procArch == 64 && _fv.Major == 6 && _fv.Minor == 0)
-                    ExecWait(ExpandPath("%SystemRoot%") + @"\system32\reg.exe add HKLM\SYSTEM\CurrentControlSet\Services\TermService\Parameters /v ServiceDll /t REG_EXPAND_SZ /d \""" + _wrapPath + "\" /f");
+                    ExecuteAndWait(ExpandPath("%SystemRoot%") + @"\system32\reg.exe add HKLM\SYSTEM\CurrentControlSet\Services\TermService\Parameters /v ServiceDll /t REG_EXPAND_SZ /d \""" + _wrapPath + "\" /f");
             }
         }
 
