@@ -15,58 +15,58 @@ namespace RDPWrapInstaller
 {
     internal enum ResourceType
     {
-        RDPW32,
-        RDPW64,
-        RFXVMT32,
-        RFXVMT64,
-        RDPCLIP6032,
-        RDPCLIP6132,
-        RDPCLIP6064,
-        RDPCLIP6164
+        Rdpw32,
+        Rdpw64,
+        Rfxvmt32,
+        Rfxvmt64,
+        Rdpclip6032,
+        Rdpclip6132,
+        Rdpclip6064,
+        Rdpclip6164
     }
 
     public class RDPWrap
     {
+        private static readonly Assembly _assembly;
         private static readonly RDPWrapLogger _logger;
     
-        private static int _procArch; // Архитектура процессора
-        private static bool _installed; // установлен ли wrapper
-        private static string _termServicePath; // путь в реестре
-        private static string _wrapPath; // путь до rdp враппера
+        private static int _procArch;
+        private static bool _installed;
+        private static string _termServicePath;
+        private static string _wrapPath;
         private static IntPtr _wow64Value = IntPtr.Zero;
         private static string _termService = "TermService";
         private static int _termServicePID;
         private static Version _fv;
         private static bool _online = true;
         private static List<ServiceController> _sharedSvcs;
-        private static Assembly _assembly;
 
         public static string Logs => _logger.Logs;
 
         static RDPWrap()
         {
-            _logger = new RDPWrapLogger();
             _assembly = Assembly.GetExecutingAssembly();
+            _logger = new RDPWrapLogger();
         }
 
-        private static void SvcConfigStart(string svcName, ServiceStartMode svcStartMode)
+        private static void ServiceConfigStart(string svcName, ServiceStartMode svcStartMode)
         {
             _logger.Log(LogType.Information, "Configuring " + svcName);
-            ServiceController svcCtrl = new ServiceController(svcName);
+            var svcCtrl = new ServiceController(svcName);
 
             ServiceHelper.ChangeStartMode(svcCtrl, svcStartMode);
             _logger.Log(LogType.Information, "Started " + svcName);
         }
 
-        private static void SvcStart(string svcName)
+        private static void ServiceStart(string svcName)
         {
-            ServiceController svcCtrl = new ServiceController(svcName);
+            var serviceController = new ServiceController(svcName);
             _logger.Log(LogType.Information, "Starting " + svcName);
 
-            if (svcCtrl.Status == ServiceControllerStatus.Stopped)
+            if (serviceController.Status == ServiceControllerStatus.Stopped)
             {
-                svcCtrl.Start();
-                svcCtrl.WaitForStatus(ServiceControllerStatus.Running);
+                serviceController.Start();
+                serviceController.WaitForStatus(ServiceControllerStatus.Running);
                 _logger.Log(LogType.Information, "Started " + svcName);
             }
             else
@@ -109,21 +109,20 @@ namespace RDPWrapInstaller
 
         private static void TsConfigRegistry(bool enable)
         {
-            Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections", !enable, RegistryValueKind.DWord);
+            RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections", !enable, RegistryValueKind.DWord);
             if (enable)
             {
-                Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\Licensing Core\EnableConcurrentSessions", true, RegistryValueKind.String);
-                Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\AllowMultipleTSSessions", true, RegistryValueKind.String);
-                if (!Helpers.RegistryHelper.HiveExists(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns"))
+                RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\Licensing Core\EnableConcurrentSessions", true, RegistryValueKind.String);
+                RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\AllowMultipleTSSessions", true, RegistryValueKind.String);
+                if (!RegistryHelper.HiveExists(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns"))
                 {
-                    Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\Clip Redirector\Name", "RDPClip", RegistryValueKind.String);
-                    Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\Clip Redirector\Type", 3, RegistryValueKind.DWord);
+                    RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\Clip Redirector\Name", "RDPClip", RegistryValueKind.String);
+                    RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\Clip Redirector\Type", 3, RegistryValueKind.DWord);
 
-                    Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\DND Redirector\Name", "RDPDND", RegistryValueKind.String);
-                    Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\DND Redirector\Type", 3, RegistryValueKind.DWord);
+                    RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\DND Redirector\Name", "RDPDND", RegistryValueKind.String);
+                    RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\DND Redirector\Type", 3, RegistryValueKind.DWord);
 
-                    Helpers.RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\Dynamic VC\Type", -1, RegistryValueKind.DWord);
-
+                    RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\AddIns\Dynamic VC\Type", -1, RegistryValueKind.DWord);
                 }
             }
         }
@@ -136,14 +135,14 @@ namespace RDPWrapInstaller
 
             using var dataStream = resourceType switch
             {
-                ResourceType.RDPW32 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
-                ResourceType.RDPW64 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW64.dll"),
-                ResourceType.RFXVMT32 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
-                ResourceType.RFXVMT64 => _assembly.GetManifestResourceStream($"{resPrefix}.RFXVMT64.dll"),
-                ResourceType.RDPCLIP6032 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6032.dll"),
-                ResourceType.RDPCLIP6132 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6132.dll"),
-                ResourceType.RDPCLIP6064 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6064.dll"),
-                ResourceType.RDPCLIP6164 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6164.dll"),
+                ResourceType.Rdpw32 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
+                ResourceType.Rdpw64 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW64.dll"),
+                ResourceType.Rfxvmt32 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
+                ResourceType.Rfxvmt64 => _assembly.GetManifestResourceStream($"{resPrefix}.RFXVMT64.dll"),
+                ResourceType.Rdpclip6032 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6032.dll"),
+                ResourceType.Rdpclip6132 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6132.dll"),
+                ResourceType.Rdpclip6064 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6064.dll"),
+                ResourceType.Rdpclip6164 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6164.dll"),
                 _ => throw new ArgumentOutOfRangeException()
             };
             _logger.Log(LogType.Information, "Resource fetched");
@@ -175,36 +174,36 @@ namespace RDPWrapInstaller
             {
                 _logger.Log(LogType.Information, "Downloading latest INI file...");
                 byte[] iniData = GitIniFile();
-                string s = Path.Combine(Path.GetDirectoryName(ExpandPath(_wrapPath)), "rdpwrap.ini");
-                File.WriteAllBytes(s, iniData);
-                _logger.Log(LogType.Information, "Latest INI file -> " + s);
+                string initFilePath = Path.Combine(Path.GetDirectoryName(ExpandPath(_wrapPath)), "rdpwrap.ini");
+                File.WriteAllBytes(initFilePath, iniData);
+                _logger.Log(LogType.Information, "Latest INI file: " + initFilePath);
             }
 
             ResourceType? rdpClipResType = null;
             ResourceType? rfxvmtResType = null;
             if (_procArch == 32)
             {
-                byte[] rdpw32Dll = await GetResource(ResourceType.RDPW32);
+                byte[] rdpw32Dll = await GetResource(ResourceType.Rdpw32);
                 await File.WriteAllBytesAsync(ExpandPath(_wrapPath), rdpw32Dll);
                 
                 if (_fv.Major == 6 && _fv.Minor == 0)
-                    rdpClipResType = ResourceType.RDPCLIP6032;
+                    rdpClipResType = ResourceType.Rdpclip6032;
                 else if (_fv.Major == 6 && _fv.Minor == 1)
-                    rdpClipResType = ResourceType.RDPCLIP6132;
+                    rdpClipResType = ResourceType.Rdpclip6132;
                 if (_fv.Major == 10 && _fv.Minor == 0)
-                    rfxvmtResType = ResourceType.RFXVMT32;
+                    rfxvmtResType = ResourceType.Rfxvmt32;
             }
             else if (_procArch == 64)
             {
-                byte[] rdpw64Dll = await GetResource(ResourceType.RDPW64);
+                byte[] rdpw64Dll = await GetResource(ResourceType.Rdpw64);
                 await File.WriteAllBytesAsync(ExpandPath(_wrapPath), rdpw64Dll);
                 
                 if (_fv.Major == 6 && _fv.Minor == 0)
-                    rdpClipResType = ResourceType.RDPCLIP6064;
+                    rdpClipResType = ResourceType.Rdpclip6064;
                 else if (_fv.Major == 6 && _fv.Minor == 1)
-                    rdpClipResType = ResourceType.RDPCLIP6164;
+                    rdpClipResType = ResourceType.Rdpclip6164;
                 if (_fv.Major == 10 && _fv.Minor == 0)
-                    rfxvmtResType = ResourceType.RFXVMT64;
+                    rfxvmtResType = ResourceType.Rfxvmt64;
             }
 
             if (rdpClipResType != null)
@@ -280,14 +279,14 @@ namespace RDPWrapInstaller
             var svcCtrl1 = new ServiceController(CertPropSvc);
             if (svcCtrl1.Status == ServiceControllerStatus.Stopped)
             {
-                SvcConfigStart(CertPropSvc, ServiceStartMode.Automatic); // Maybe Bug
+                ServiceConfigStart(CertPropSvc, ServiceStartMode.Automatic); // Maybe Bug
                 //SvcStart(CertPropSvc, LogType.);
             }
 
             var svcCtrl2 = new ServiceController(SessionEnv);
             if (svcCtrl2.Status == ServiceControllerStatus.Stopped)
             {
-                SvcConfigStart(SessionEnv, ServiceStartMode.Automatic); // Maybe Bug
+                ServiceConfigStart(SessionEnv, ServiceStartMode.Automatic); // Maybe Bug
                 //SvcStart(SessionEnv, LogType.);
             }
         }
@@ -387,17 +386,17 @@ namespace RDPWrapInstaller
         /// <returns></returns>
         private static List<ServiceController> GetSharedServices(string serviceName, int serviceUsingPid)
         {
-            var svcs = ServiceController.GetServices();
-            var sharedSvc = new List<ServiceController>();
-            string sharedSvcTxt = "";
-            foreach (ServiceController svc in svcs)
+            var services = ServiceController.GetServices();
+            var sharedServices = new List<ServiceController>();
+            string sharedServiceText = "";
+            foreach (var service in services)
             {
                 try
                 {
-                    if (svc.ServiceName != serviceName && svc.GetServiceProcessId() == serviceUsingPid)
+                    if (service.ServiceName != serviceName && service.GetServiceProcessId() == serviceUsingPid)
                     {
-                        sharedSvc.Add(svc);
-                        sharedSvcTxt += string.Format("{0}, ", svc.ServiceName);
+                        sharedServices.Add(service);
+                        sharedServiceText += string.Format("{0}, ", service.ServiceName);
                     }
                 }
                 catch (Exception ex)
@@ -406,25 +405,25 @@ namespace RDPWrapInstaller
                 }
             }
 
-            if (sharedSvc.Count != 0)
+            if (sharedServices.Count != 0)
             {
-                _logger.Log(LogType.Information, "Shared services found: " + sharedSvcTxt);
+                _logger.Log(LogType.Information, "Shared services found: " + sharedServiceText);
             }
             else
             {
                 _logger.Log(LogType.Information, "Shared services not found");
             }
 
-            return sharedSvc;
+            return sharedServices;
         }
 
         private static void CheckTermsrvProcess()
         {
-            int termServicePID = GetServicePid(_termService);
-            if (termServicePID == -1 || termServicePID == 0) // if process killed
+            int termServiceProcId = GetServicePid(_termService);
+            if (termServiceProcId == -1 || termServiceProcId == 0) // if process killed
             {
-                SvcConfigStart(_termService, ServiceStartMode.Automatic);
-                SvcStart(_termService);
+                ServiceConfigStart(_termService, ServiceStartMode.Automatic);
+                ServiceStart(_termService);
             }
         }
 
@@ -440,8 +439,8 @@ namespace RDPWrapInstaller
                 if (_procArch == 32)
                 {
                     _logger.Log(LogType.Warning,
-                        "Windows XP is not supported.",
-                        "You may take a look at RDP Realtime Patch by Stas''M for Windows XP",
+                        "Windows XP is not supported.\n" +
+                        "You may take a look at RDP Realtime Patch by Stas''M for Windows XP\n" +
                         "Link: ");
                 }
                 if (_procArch == 64)
@@ -469,16 +468,19 @@ namespace RDPWrapInstaller
                 if (_procArch == 32 && _fv.Revision == 6000 & _fv.Build == 16386)
                 {
                     _logger.Log(LogType.Warning,
-                        "This version of Terminal Services may crash on logon attempt.",
+                        "This version of Terminal Services may crash on logon attempt.\n" +
                         "It''s recommended to upgrade to Service Pack 1 or higher.");
                 }
                 return;
             }
-            if (_fv.Major == 6 && _fv.Minor == 1)
-                supportedLvl = 1;
 
-            string iniTxt = Encoding.UTF8.GetString(GitIniFile());
-            if (iniTxt.IndexOf($"[{verText}]") > -1)
+            if (_fv.Major == 6 && _fv.Minor == 1)
+            {
+                supportedLvl = 1;
+            }
+
+            string iniText = Encoding.UTF8.GetString(GitIniFile());
+            if (iniText.IndexOf($"[{verText}]") > -1)
             {
                 supportedLvl = 2;
             }
@@ -491,7 +493,7 @@ namespace RDPWrapInstaller
                     break;
                 case 1:
                     _logger.Log(LogType.Warning,
-                        "This version of Terminal Services is supported partially.",
+                        "This version of Terminal Services is supported partially.\n" +
                         "It means you may have some limitations such as only 2 concurrent sessions.");
                     UpdateMsg();
                     break;
@@ -504,7 +506,7 @@ namespace RDPWrapInstaller
         private static void UpdateMsg()
         {
             _logger.Log(LogType.Information,
-                "Try running \"update.bat\" or \"RDPWInst - w\" to download latest INI file.",
+                "Try running \"update.bat\" or \"RDPWInst - w\" to download latest INI file.\n" +
                 "If it doesn''t help, send your termsrv.dll to project developer for support.");
         }
 
@@ -516,10 +518,8 @@ namespace RDPWrapInstaller
         /// <returns></returns>
         private static bool CheckWin32Version(int minMajorVer, int minMinorVer)
         {
-            var osVer = Environment.OSVersion.Version;
-            if (osVer.Major < minMajorVer || osVer.Minor < minMinorVer)
-                return false;
-            return true;
+            var osVersion = Environment.OSVersion.Version;
+            return osVersion.Major > minMajorVer || osVersion.Minor > minMinorVer;
         }
 
         private static string ExpandPath(string path)
@@ -529,12 +529,6 @@ namespace RDPWrapInstaller
                 path = path.Replace("%ProgramFiles%", "%ProgramW6432%");
             }
             return Environment.ExpandEnvironmentVariables(path);
-            //string test = Environment.ExpandEnvironmentVariables(path);
-            //if (Environment.GetEnvironmentVariable(path) != null)
-            //{
-            //    return path;
-            //}
-            //return path;
         }
 
         public static async Task Install()
@@ -542,7 +536,7 @@ namespace RDPWrapInstaller
             if (!CheckWin32Version(6, 0))
             {
                 _logger.Log(LogType.Error,
-                    "Unsupported Windows version:",
+                    "Unsupported Windows version:\n" +
                     "  only >= 6.0 (Vista, Server 2008 and newer) are supported.");
                 return;
             }
@@ -575,45 +569,42 @@ namespace RDPWrapInstaller
             _logger.Log(LogType.Information, "Checking dependencies...");
             CheckTermsrvDependencies();
 
-            // Получение общих сервисов до завершения терминального сервиса
-            _sharedSvcs = GetSharedServices(_termService, GetServicePid(_termService));
-            Thread.Sleep(1000);
-
-            // Завершение терминального процесса
+            int termServiceId = GetServicePid(_termService);
+            
+            _sharedSvcs = GetSharedServices(_termService, termServiceId);
+            await Task.Delay(1000);
+            
             _logger.Log(LogType.Information, "Terminating service...");
-            KillProcess(GetServicePid(_termService));
-            Thread.Sleep(1000);
+            KillProcess(termServiceId);
+            await Task.Delay(1000);
 
             if (_sharedSvcs.Count != 0)
             {
                 foreach (ServiceController svc in _sharedSvcs)
                 {
-                    SvcStart(svc.ServiceName);
+                    ServiceStart(svc.ServiceName);
                 }
             }
-
-            // Запуск терминальной службы
-            SvcStart(_termService);
-            Thread.Sleep(1000);
+            
+            ServiceStart(_termService);
+            await Task.Delay(1000);
 
             _logger.Log(LogType.Information, "Configuring registry...");
             TsConfigRegistry(true);
+            
             _logger.Log(LogType.Information, "Configuring firewall...");
             TsConfigFirewall(true);
 
             _logger.Log(LogType.Information, "Successfully installed.");
-
-            //if (_procArch == 64)
-            //    RevertWowRedirection();
         }
 
-        public static void Uninstall()
+        public static async Task Uninstall()
         {
             if (!CheckWin32Version(6, 0))
             {
                 _logger.Log(LogType.Error,
-                    "Unsupported Windows version:",
-                    "  only >= 6.0 (Vista, Server 2008 and newer) are supported.");
+                    "Unsupported Windows version:\n" +
+                    "   only >= 6.0 (Vista, Server 2008 and newer) are supported.");
                 return;
             }
             if (!SupportedArchitecture())
@@ -629,54 +620,51 @@ namespace RDPWrapInstaller
                 return;
             }
             _logger.Log(LogType.Information, "Uninstalling...");
-
-            // Проверка терминального процесса
+            
             CheckTermsrvProcess();
 
             _logger.Log(LogType.Information, "Resetting service library...");
             ResetServiceDll();
 
-            // Получение общих сервисов до завершения терминального сервиса
-            _sharedSvcs = GetSharedServices(_termService, GetServicePid(_termService));
-            Thread.Sleep(1000);
-
-            // Завершение терминального процесса
+            int termServiceId = GetServicePid(_termService);
+            
+            _sharedSvcs = GetSharedServices(_termService, termServiceId);
+            await Task.Delay(1000);
+            
             _logger.Log(LogType.Information, "Terminating service...");
-            KillProcess(GetServicePid(_termService));
-            Thread.Sleep(1000);
-
-            // Удаление файлов враппера, dll, ini, папка...
+            KillProcess(termServiceId);
+            await Task.Delay(1000);
+            
             _logger.Log(LogType.Information, "Removing files...");
             DeleteFiles();
-            Thread.Sleep(1000);
-
-            // Запуск обших сервисов 
+            await Task.Delay(1000);
+            
             if (_sharedSvcs.Count != 0)
             {
                 foreach (ServiceController svc in _sharedSvcs)
                 {
-                    SvcStart(svc.ServiceName);
+                    ServiceStart(svc.ServiceName);
                 }
             }
-
-            // Запуск терминальной службы
-            SvcStart(_termService);
+            
+            ServiceStart(_termService);
 
             _logger.Log(LogType.Information, "Configuring registry...");
             TsConfigRegistry(false);
+            
             _logger.Log(LogType.Information, "Configuring firewall...");
             TsConfigFirewall(false);
 
             _logger.Log(LogType.Information, "Successfully uninstalled.");
         }
 
-        public static void Reload()
+        public static async Task Reload()
         {
             if (!CheckWin32Version(6, 0))
             {
                 _logger.Log(LogType.Error,
-                    "Unsupported Windows version:",
-                    "  only >= 6.0 (Vista, Server 2008 and newer) are supported.");
+                    "Unsupported Windows version:\n" +
+                    "   only >= 6.0 (Vista, Server 2008 and newer) are supported.");
                 return;
             }
             if (!SupportedArchitecture())
@@ -687,30 +675,27 @@ namespace RDPWrapInstaller
             CheckInstall();
 
             _logger.Log(LogType.Information, "Restarting...");
-
-            // Проверка терминального процесса
+            
             CheckTermsrvProcess();
 
-            // Получение общих сервисов до завершения терминального сервиса
-            _sharedSvcs = GetSharedServices(_termService, GetServicePid(_termService));
-            Thread.Sleep(1000);
-
-            // Завершение терминального процесса
+            int termServiceId = GetServicePid(_termService);
+            
+            _sharedSvcs = GetSharedServices(_termService, termServiceId);
+            await Task.Delay(1000);
+            
             _logger.Log(LogType.Information, "Terminating service...");
-            KillProcess(GetServicePid(_termService));
-            Thread.Sleep(1000);
-
-            // Запуск обших сервисов 
+            KillProcess(termServiceId);
+            await Task.Delay(1000);
+            
             if (_sharedSvcs.Count != 0)
             {
                 foreach (ServiceController svc in _sharedSvcs)
                 {
-                    SvcStart(svc.ServiceName);
+                    ServiceStart(svc.ServiceName);
                 }
             }
-
-            // Запуск терминальной службы
-            SvcStart(_termService);
+            
+            ServiceStart(_termService);
 
             _logger.Log(LogType.Information, "Successfully reloaded...");
         }

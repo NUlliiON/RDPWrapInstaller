@@ -1,4 +1,6 @@
-﻿namespace RDPWrapInstaller
+﻿using System;
+
+namespace RDPWrapInstaller
 {
     internal enum LogType
     {
@@ -11,18 +13,16 @@
     {
         public string Logs { get; private set; } = "";
 
-        public void Log(LogType logType, params string[] logs)
+        public void Log(LogType logType, string log)
         {
-            foreach (string log in logs)
+            string logPrefix = logType switch
             {
-                string logPrefix = logType switch
-                {
-                    LogType.Information => "[*] ",
-                    LogType.Warning => "[!] ",
-                    LogType.Error => "[-] "
-                };
-                Logs +=  string.Format("{0}{1}\n", logPrefix, log);
-            }
+                LogType.Information => "[*] ",
+                LogType.Warning => "[!] ",
+                LogType.Error => "[-] ",
+                _ => throw new ArgumentOutOfRangeException()
+            };
+            Logs += string.Format("{0}{1}\n", logPrefix, log);
         }
     }
 }
