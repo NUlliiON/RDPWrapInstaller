@@ -254,7 +254,6 @@ namespace RDPWrapInstaller
         {
             if (RegistryHelper.HiveExists(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Services\TermService\Parameters"))
             {
-                // Set new value ////// <--- ИЗ ЗА ЭТОГО НЕ ПЕРЕЗАПУСКАЕТСЯ СЕРВИС TermService. Пофикшено, в типе значения надо было указать не просто REG_SZ, а EXPAND_REG_SZ
                 RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\TermService\Parameters\ServiceDll", _wrapPath, RegistryValueKind.ExpandString);
 
                 if (_procArch == 64 && _fv.Major == 6 && _fv.Minor == 0)
