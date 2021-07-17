@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RDPWrapInstaller", "RDPWrapInstaller\RDPWrapInstaller.csproj", "{F47D2B04-4162-4C03-84CD-35022457B8B2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RDPWrapInstallerConsoleTests", "RDPWrapInstallerConsoleTests\RDPWrapInstallerConsoleTests.csproj", "{0FDE2D13-8BB4-4DBD-83C4-C79985CDB40C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RDPWrapInstaller.Tests", "RDPWrapInstaller.Tests\RDPWrapInstaller.Tests.csproj", "{C07C0321-450C-4BA0-9FD9-8745D2C1CA83}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F47D2B04-4162-4C03-84CD-35022457B8B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F47D2B04-4162-4C03-84CD-35022457B8B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F47D2B04-4162-4C03-84CD-35022457B8B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F47D2B04-4162-4C03-84CD-35022457B8B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0FDE2D13-8BB4-4DBD-83C4-C79985CDB40C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0FDE2D13-8BB4-4DBD-83C4-C79985CDB40C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0FDE2D13-8BB4-4DBD-83C4-C79985CDB40C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0FDE2D13-8BB4-4DBD-83C4-C79985CDB40C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C07C0321-450C-4BA0-9FD9-8745D2C1CA83}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C07C0321-450C-4BA0-9FD9-8745D2C1CA83}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C07C0321-450C-4BA0-9FD9-8745D2C1CA83}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C07C0321-450C-4BA0-9FD9-8745D2C1CA83}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

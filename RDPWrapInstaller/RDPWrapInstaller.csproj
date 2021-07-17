@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net5.0-windows</TargetFramework>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
+      <PackageReference Include="System.ServiceProcess.ServiceController" Version="5.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Extensions" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="Files\RDPCLIP6032.exe" />
+      <EmbeddedResource Include="Files\RDPCLIP6032.exe" />
+      <None Remove="Files\RDPCLIP6064.exe" />
+      <EmbeddedResource Include="Files\RDPCLIP6064.exe" />
+      <None Remove="Files\RDPCLIP6132.exe" />
+      <EmbeddedResource Include="Files\RDPCLIP6132.exe" />
+      <None Remove="Files\RDPCLIP6164.exe" />
+      <EmbeddedResource Include="Files\RDPCLIP6164.exe" />
+      <None Remove="Files\RDPW32.dll" />
+      <EmbeddedResource Include="Files\RDPW32.dll" />
+      <None Remove="Files\RDPW64.dll" />
+      <EmbeddedResource Include="Files\RDPW64.dll" />
+      <None Remove="Files\RFXVMT32.dll" />
+      <EmbeddedResource Include="Files\RFXVMT32.dll" />
+      <None Remove="Files\RFXVMT64.dll" />
+      <EmbeddedResource Include="Files\RFXVMT64.dll" />
+    </ItemGroup>
+
+</Project>
