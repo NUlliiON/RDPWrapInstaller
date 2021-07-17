@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace RDPWrapInstaller.Tests
@@ -6,9 +7,9 @@ namespace RDPWrapInstaller.Tests
     public class UnitTest1
     {
         [Fact]
-        public void Should_Install_RDPWrap()
+        public async Task Should_Install_RDPWrap()
         {
-            RDPWrap.Install();
+            await RDPWrap.Install();
         }
         
         [Fact]
