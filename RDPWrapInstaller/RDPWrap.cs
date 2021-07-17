@@ -131,7 +131,7 @@ namespace RDPWrapInstaller
         {
             _logger.Log(LogType.Information, "Requesting resource: " + resourceType);
 
-            string resPrefix = "RDPWrapInstaller.Files.";
+            string resPrefix = "RDPWrapInstaller.Files";
 
             using var dataStream = resourceType switch
             {
@@ -593,7 +593,7 @@ namespace RDPWrapInstaller
             TsConfigRegistry(true);
             
             _logger.Log(LogType.Information, "Configuring firewall...");
-            TsConfigFirewall(true);
+            await TsConfigFirewall(true);
 
             _logger.Log(LogType.Information, "Successfully installed.");
         }
@@ -653,7 +653,7 @@ namespace RDPWrapInstaller
             TsConfigRegistry(false);
             
             _logger.Log(LogType.Information, "Configuring firewall...");
-            TsConfigFirewall(false);
+            await TsConfigFirewall(false);
 
             _logger.Log(LogType.Information, "Successfully uninstalled.");
         }
