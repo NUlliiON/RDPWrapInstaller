@@ -125,7 +125,9 @@ namespace RDPWrapInstaller.Helpers
         public static int GetServiceProcessId(this ServiceController sc)
         {
             if (sc == null)
+            {
                 throw new ArgumentNullException("sc");
+            }
 
             IntPtr zero = IntPtr.Zero;
 
