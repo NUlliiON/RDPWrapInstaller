@@ -1,6 +1,6 @@
 # RDPWrapInstaller
 
-RDPWrapInstaller is an implementation of the RDPWrapper installer that allows you to programmatically manage the installation, uninstallation and other features of RDPWrapper
+RDPWrapInstaller is an implementation of the [RDPWrapper](https://github.com/stascorp/rdpwrap) installer that allows you to programmatically manage the installation, uninstallation and other features of [RDPWrapper](https://github.com/stascorp/rdpwrap)
 
 # Installing via NuGet (soon)
 
@@ -70,4 +70,4 @@ private static async Task Uninstall()
 
 # License
 
-RDPWrapInstaller is licensed under the [MIT](LICENSE.TXT) license.
+RDPWrapInstaller is licensed under the [MIT](LICENSE) license.
