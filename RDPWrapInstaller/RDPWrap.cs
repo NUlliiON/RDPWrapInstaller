@@ -275,6 +275,13 @@ namespace RDPWrapInstaller
         {
             string termSvcDirPath = Path.GetDirectoryName(_initTermSvcPath)!;
 
+            string iniFilePath = Path.Combine(termSvcDirPath, "rdpwrap.ini"); 
+            _logger?.LogInformation("Deleting: " + iniFilePath);
+            if (File.Exists(iniFilePath)) File.Delete(iniFilePath);
+
+            _logger?.LogInformation("Deleting: " + _initTermSvcPath);
+            if (File.Exists(_initTermSvcPath)) File.Delete(_initTermSvcPath);
+
             _logger?.LogInformation("Deleteting folder: " + termSvcDirPath);
             if (Directory.Exists(termSvcDirPath)) Directory.Delete(termSvcDirPath);
         }

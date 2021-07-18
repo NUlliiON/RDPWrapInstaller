@@ -11,6 +11,8 @@ namespace RDPWrapInstallerConsoleTests
 {
     class Program
     {
+        private static RDPWrap _rdpWrap;
+        
         static async Task Main(string[] args)
         {
             Log.Logger = new LoggerConfiguration()
@@ -26,10 +28,42 @@ namespace RDPWrapInstallerConsoleTests
                 .UseSerilog()
                 .Build();
             
-            var rdpWrap = ActivatorUtilities.CreateInstance<RDPWrap>(host.Services);
-            if (rdpWrap.IsInstalled())
-                await rdpWrap.Uninstall();
-            await rdpWrap.Install();
+            _rdpWrap = ActivatorUtilities.CreateInstance<RDPWrap>(host.Services);
+            
+            Console.WriteLine("I - install\n" +
+                              "U - uninstall");
+            Console.Write("Command: ");
+            try
+            {
+                char cmd = Char.ToLower(Console.ReadKey().KeyChar);
+                Console.WriteLine();
+                var task = cmd switch
+                {
+                    'i' => Install(),
+                    'u' => Uninstall(),
+                    _ => throw new ArgumentOutOfRangeException()
+                };
+                await task;
+                Console.WriteLine("Command completed.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex);
+            }
+
+            Console.ReadLine();
+        }
+
+        private static async Task Install()
+        {
+            if (!_rdpWrap.IsInstalled())
+                await _rdpWrap.Install();
+        }
+
+        private static async Task Uninstall()
+        {
+            if (_rdpWrap.IsInstalled())
+                await _rdpWrap.Uninstall();
         }
         
         static void BuildConfig(IConfigurationBuilder builder)
