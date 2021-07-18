@@ -111,11 +111,7 @@ namespace RDPWrapInstaller.Helpers
             [MarshalAs(UnmanagedType.U4)]
             public uint dwServiceFlags;
         }
-
-
-
-
-
+        
         internal const int ERROR_INSUFFICIENT_BUFFER = 0x7a;
         internal const int SC_STATUS_PROCESS_INFO = 0;
 

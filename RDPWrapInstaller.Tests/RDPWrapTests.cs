@@ -9,13 +9,15 @@ namespace RDPWrapInstaller.Tests
         [Fact]
         public async Task Should_Install_RDPWrap()
         {
-            await RDPWrap.Install();
+            var rdpWrap = new RDPWrap();
+            await rdpWrap.Install();
         }
         
         [Fact]
-        public void Should_Uninstall_RDPWrap()
+        public async Task Should_Uninstall_RDPWrap()
         {
-            RDPWrap.Uninstall();
+            var rdpWrap = new RDPWrap();
+            await rdpWrap.Uninstall();
         }
     }
 }

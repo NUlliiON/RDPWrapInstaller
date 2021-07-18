@@ -8,7 +8,9 @@ using System.ServiceProcess;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using RDPWrapInstaller.Exceptions;
 using RDPWrapInstaller.Helpers;
 
 namespace RDPWrapInstaller
@@ -25,57 +27,51 @@ namespace RDPWrapInstaller
         Rdpclip6164
     }
 
-    public class RDPWrap
+    public sealed class RDPWrap
     {
-        private static readonly Assembly _assembly;
-        private static readonly RDPWrapLogger _logger;
+        private readonly Assembly _assembly;
+        private readonly ILogger<RDPWrap>? _logger;
     
-        private static int _procArch;
-        private static bool _installed;
-        private static string _termServicePath;
-        private static string _wrapPath;
-        private static IntPtr _wow64Value = IntPtr.Zero;
-        private static string _termService = "TermService";
-        private static int _termServicePID;
-        private static Version _fv;
-        private static bool _online = true;
-        private static List<ServiceController> _sharedSvcs;
+        private int _procArch;
+        private Version _termSvcVersion;
+        private bool _online = true;
+        private string _initTermSvcPath;
 
-        public static string Logs => _logger.Logs;
+        private const string TermServiceName = "TermService";
+        private const string WrapperPath = @"C:\Program Files\RDP Wrapper\rdpwrap.dll";
 
-        static RDPWrap()
+        public RDPWrap(ILogger<RDPWrap>? logger = null)
         {
             _assembly = Assembly.GetExecutingAssembly();
-            _logger = new RDPWrapLogger();
+            _logger = logger;
         }
 
-        private static void ServiceConfigStart(string svcName, ServiceStartMode svcStartMode)
+        private void ServiceConfigStart(string svcName, ServiceStartMode svcStartMode)
         {
-            _logger.Log(LogType.Information, "Configuring " + svcName);
+            _logger?.LogInformation("Configuring " + svcName);
             var svcCtrl = new ServiceController(svcName);
 
+            _logger?.LogInformation("Change start mode " + svcName);
             ServiceHelper.ChangeStartMode(svcCtrl, svcStartMode);
-            _logger.Log(LogType.Information, "Started " + svcName);
         }
 
-        private static void ServiceStart(string svcName)
+        private void ServiceStart(string svcName)
         {
             var serviceController = new ServiceController(svcName);
-            _logger.Log(LogType.Information, "Starting " + svcName);
 
             if (serviceController.Status == ServiceControllerStatus.Stopped)
             {
+                _logger?.LogInformation("Starting " + svcName);
                 serviceController.Start();
                 serviceController.WaitForStatus(ServiceControllerStatus.Running);
-                _logger.Log(LogType.Information, "Started " + svcName);
             }
             else
             {
-                _logger.Log(LogType.Error, "Service " + svcName + " is already running");
+                _logger?.LogInformation("Service " + svcName + " is already running");
             }
         }
 
-        private static Task ExecuteAndWait(string cmdline)
+        private Task ExecuteAndWait(string cmdline)
         {
             var proc = new Process();
             var procInfo = new ProcessStartInfo()
@@ -94,7 +90,7 @@ namespace RDPWrapInstaller
             return proc.WaitForExitAsync();
         }
 
-        private static async Task TsConfigFirewall(bool enable)
+        private async Task TsConfigFirewall(bool enable)
         {
             if (enable)
             {
@@ -107,7 +103,7 @@ namespace RDPWrapInstaller
             }
         }
 
-        private static void TsConfigRegistry(bool enable)
+        private void TsConfigRegistry(bool enable)
         {
             RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections", !enable, RegistryValueKind.DWord);
             if (enable)
@@ -127,13 +123,13 @@ namespace RDPWrapInstaller
             }
         }
 
-        private static async Task<byte[]> GetResource(ResourceType resourceType)
+        private async Task<byte[]> GetResource(ResourceType resourceType)
         {
-            _logger.Log(LogType.Information, "Requesting resource: " + resourceType);
+            _logger?.LogInformation("Requesting resource: " + resourceType);
 
             string resPrefix = "RDPWrapInstaller.Files";
 
-            using var dataStream = resourceType switch
+            await using var dataStream = resourceType switch
             {
                 ResourceType.Rdpw32 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW32.dll"),
                 ResourceType.Rdpw64 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPW64.dll"),
@@ -145,38 +141,39 @@ namespace RDPWrapInstaller
                 ResourceType.Rdpclip6164 => _assembly.GetManifestResourceStream($"{resPrefix}.RDPCLIP6164.dll"),
                 _ => throw new ArgumentOutOfRangeException()
             };
-            _logger.Log(LogType.Information, "Resource fetched");
+            if (dataStream == null)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+            
+            _logger?.LogInformation("Resource fetched");
 
             var memStream = new MemoryStream();
             await dataStream.CopyToAsync(memStream);
             
-            _logger.Log(LogType.Information, "Resource writed");
+            _logger?.LogInformation("Resource writed");
 
             return memStream.ToArray();
         }
 
-        private static async Task ExtractFiles()
+        private async Task ExtractFiles()
         {
-            string super = Path.GetDirectoryName(ExpandPath(_wrapPath));
-            if (!Directory.Exists(super))
+            string expandedWrapPath = ExpandPath(WrapperPath);
+            string? wrapDirPath = Path.GetDirectoryName(expandedWrapPath);
+
+            if (!Directory.Exists(wrapDirPath))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(ExpandPath(_wrapPath)));
-                string s = Path.GetDirectoryName(ExpandPath(_wrapPath));
-                _logger.Log(LogType.Information, "Folder created: " + s);
-                //GrantSidFullAccess(s, "S-1-5-18", LogType.);
-                //GrantSidFullAccess(s, "S-1-5-6", LogType.);
-                //// TODO:
-                //GrantSidFullAccess(S, 'S-1-5-18'); // Local System account
-                //GrantSidFullAccess(S, 'S-1-5-6'); // Service group
+                _logger?.LogInformation("Creating directory: " + wrapDirPath);
+                Directory.CreateDirectory(wrapDirPath);
             }
 
             if (_online)
             {
-                _logger.Log(LogType.Information, "Downloading latest INI file...");
+                _logger?.LogInformation("Downloading latest INI file...");
                 byte[] iniData = GitIniFile();
-                string initFilePath = Path.Combine(Path.GetDirectoryName(ExpandPath(_wrapPath)), "rdpwrap.ini");
-                File.WriteAllBytes(initFilePath, iniData);
-                _logger.Log(LogType.Information, "Latest INI file: " + initFilePath);
+                string initFilePath = Path.Combine(wrapDirPath, "rdpwrap.ini");
+                await File.WriteAllBytesAsync(initFilePath, iniData);
+                _logger?.LogInformation("Latest INI file: " + initFilePath);
             }
 
             ResourceType? rdpClipResType = null;
@@ -184,25 +181,25 @@ namespace RDPWrapInstaller
             if (_procArch == 32)
             {
                 byte[] rdpw32Dll = await GetResource(ResourceType.Rdpw32);
-                await File.WriteAllBytesAsync(ExpandPath(_wrapPath), rdpw32Dll);
+                await File.WriteAllBytesAsync(expandedWrapPath, rdpw32Dll);
                 
-                if (_fv.Major == 6 && _fv.Minor == 0)
+                if (_termSvcVersion.Major == 6 && _termSvcVersion.Minor == 0)
                     rdpClipResType = ResourceType.Rdpclip6032;
-                else if (_fv.Major == 6 && _fv.Minor == 1)
+                else if (_termSvcVersion.Major == 6 && _termSvcVersion.Minor == 1)
                     rdpClipResType = ResourceType.Rdpclip6132;
-                if (_fv.Major == 10 && _fv.Minor == 0)
+                if (_termSvcVersion.Major == 10 && _termSvcVersion.Minor == 0)
                     rfxvmtResType = ResourceType.Rfxvmt32;
             }
             else if (_procArch == 64)
             {
                 byte[] rdpw64Dll = await GetResource(ResourceType.Rdpw64);
-                await File.WriteAllBytesAsync(ExpandPath(_wrapPath), rdpw64Dll);
+                await File.WriteAllBytesAsync(expandedWrapPath, rdpw64Dll);
                 
-                if (_fv.Major == 6 && _fv.Minor == 0)
+                if (_termSvcVersion.Major == 6 && _termSvcVersion.Minor == 0)
                     rdpClipResType = ResourceType.Rdpclip6064;
-                else if (_fv.Major == 6 && _fv.Minor == 1)
+                else if (_termSvcVersion.Major == 6 && _termSvcVersion.Minor == 1)
                     rdpClipResType = ResourceType.Rdpclip6164;
-                if (_fv.Major == 10 && _fv.Minor == 0)
+                if (_termSvcVersion.Major == 10 && _termSvcVersion.Minor == 0)
                     rfxvmtResType = ResourceType.Rfxvmt64;
             }
 
@@ -224,54 +221,37 @@ namespace RDPWrapInstaller
             }
         }
 
-        private static bool SupportedArchitecture()
-        {
-            var platform = OperatingSystemHelper.GetPlatform();
-            bool supported;
-            switch (platform)
+        private (bool supported, int? architecture) GetSupportedArchitecture() =>
+            OperatingSystemHelper.GetPlatform() switch
             {
-                case OperatingSystemHelper.Platform.X86: // Intel x86
-                    _procArch = 32;
-                    supported = false;
-                    break;
-                case OperatingSystemHelper.Platform.IA64: // Itaniumbased x64
-                    supported = false;
-                    break;
-                case OperatingSystemHelper.Platform.X64: // Intel or AMD x64
-                    _procArch = 64;
-                    supported = true;
-                    break;
-                case OperatingSystemHelper.Platform.Unknown: // Unknown
-                    supported = false;
-                    break;
-                default:
-                    supported = false;
-                    break;
-            }
-            return supported;
-        }
+                OperatingSystemHelper.Platform.X86 => (true, 32),
+                OperatingSystemHelper.Platform.IA64 => (false, null),
+                OperatingSystemHelper.Platform.X64 => (true, 64),
+                OperatingSystemHelper.Platform.Unknown => (false, null),
+                _ => (false, null)
+            };
 
-        private static void SetWrapperDll()
+        private void SetWrapperDll()
         {
             if (RegistryHelper.HiveExists(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Services\TermService\Parameters"))
             {
-                RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\TermService\Parameters\ServiceDll", _wrapPath, RegistryValueKind.ExpandString);
+                RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\TermService\Parameters\ServiceDll", WrapperPath, RegistryValueKind.ExpandString);
 
-                if (_procArch == 64 && _fv.Major == 6 && _fv.Minor == 0)
-                    ExecuteAndWait(ExpandPath("%SystemRoot%") + @"\system32\reg.exe add HKLM\SYSTEM\CurrentControlSet\Services\TermService\Parameters /v ServiceDll /t REG_EXPAND_SZ /d \""" + _wrapPath + "\" /f");
+                if (_procArch == 64 && _termSvcVersion.Major == 6 && _termSvcVersion.Minor == 0)
+                    ExecuteAndWait(ExpandPath("%SystemRoot%") + 
+                                   @"\system32\reg.exe add HKLM\SYSTEM\CurrentControlSet\Services\TermService\Parameters /v ServiceDll /t REG_EXPAND_SZ /d \""" + WrapperPath + "\" /f");
             }
         }
 
-        private static void ResetServiceDll()
+        private void ResetServiceDll()
         {
             if (RegistryHelper.HiveExists(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Services\TermService\Parameters"))
             {
-                // Set default value
                 RegistryHelper.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\TermService\Parameters\ServiceDll", @"%SystemRoot%\System32\termsrv.dll", RegistryValueKind.ExpandString);
             }
         }
 
-        private static void CheckTermsrvDependencies()
+        private void CheckTermsrvDependencies()
         {
             string CertPropSvc = "CertPropSvc";
             string SessionEnv = "SessionEnv";
@@ -291,25 +271,15 @@ namespace RDPWrapInstaller
             }
         }
 
-        private static void DeleteFiles()
+        private void DeleteFiles()
         {
-            string fullPath = ExpandPath(_termServicePath);
-            string path = Path.GetDirectoryName(fullPath);
+            string termSvcDirPath = Path.GetDirectoryName(_initTermSvcPath)!;
 
-            // Remove rdpwrap.ini
-            File.Delete(Path.Combine(path, "rdpwrap.ini"));
-            _logger.Log(LogType.Information, "Removed file: " + Path.Combine(path, "rdpwrap.ini"));
-
-            // Remove rdpwrap.dll
-            File.Delete(fullPath);
-            _logger.Log(LogType.Information, "Removed file: " + fullPath);
-
-            // Remove RDP folder
-            Directory.Delete(Path.GetDirectoryName(ExpandPath(_termServicePath)));
-            _logger.Log(LogType.Information, "Removed folder: " + Path.GetDirectoryName(ExpandPath(_termServicePath)));
+            _logger?.LogInformation("Deleteting folder: " + termSvcDirPath);
+            if (Directory.Exists(termSvcDirPath)) Directory.Delete(termSvcDirPath);
         }
 
-        private static void KillProcess(int pid)
+        private void KillProcess(int pid)
         {
             try
             {
@@ -318,50 +288,61 @@ namespace RDPWrapInstaller
             }
             catch (Exception ex)
             {
-                _logger.Log(LogType.Error, "Terminate process, PID: " + pid);
+                _logger?.LogInformation("Terminate process, PID: " + pid);
             }
         }
 
-        private static int GetServicePid(string svcName)
+        private int GetServicePid(string svcName)
         {
             var svcCtrl = new ServiceController(svcName);
             return svcCtrl.GetServiceProcessId();
         }
 
-        private static void CheckInstall()
+        private void CheckSupported()
         {
-            object imagePathValue = Helpers.RegistryHelper.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\TermService\\ImagePath");
-            string termServiceHost = imagePathValue as string;
-            // Term Service Host values
-            int tshValue1 = termServiceHost.ToLower().IndexOf("svchost.exe");
-            int tshValue2 = termServiceHost.ToLower().IndexOf("svchost -k");
-            // If not found
+            object imagePathValue = RegistryHelper.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\TermService\\ImagePath");
+            string termSvcHost = imagePathValue as string;
+
+            int tshValue1 = termSvcHost.ToLower().IndexOf("svchost.exe", StringComparison.Ordinal);
+            int tshValue2 = termSvcHost.ToLower().IndexOf("svchost -k", StringComparison.Ordinal);
+
             if (tshValue1 == -1 && tshValue2 == -1)
             {
-                _logger.Log(LogType.Error,
-                    "TermService is hosted in a custom application (BeTwin, etc.) - unsupported.\n" +
-                    string.Format("ImagePath: {0}", termServiceHost));
-                return;
+                string message = "TermService is hosted in a custom application (BeTwin, etc.) - unsupported.\n" +
+                                 $"ImagePath: {termSvcHost}";
+                _logger?.LogError(message);
+                throw new NotSupportedException(message);
             }
-
-            object termServiceParams = Helpers.RegistryHelper.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\TermService\\Parameters\\ServiceDll");
-            _termServicePath = (string)termServiceParams;
-            // Term Service Path values
-            int tspValue1 = _termServicePath.IndexOf("termsrv.dll");
-            int tspValue2 = _termServicePath.IndexOf("rdpwrap.dll");
-            // If not found
-            if (tspValue1 == -1 && tspValue2 == -1)
-            {
-                _logger.Log(LogType.Error,
-                    "Another third-party TermService library is installed.\n" +
-                    string.Format("ServiceDll: {0}", _termServicePath));
-                return;
-            }
-
-            _installed = _termServicePath.ToLower().IndexOf("rdpwrap.dll", StringComparison.CurrentCulture) > -1;
         }
 
-        private static void GetFileVersion(string fileName, out Version ver)
+        private void CheckAnotherLibraryInstalled()
+        {
+            string termSvcPath = GetTerminalServicePath();
+
+            int tspValue1 = termSvcPath.IndexOf("termsrv.dll", StringComparison.Ordinal);
+            int tspValue2 = termSvcPath.IndexOf("rdpwrap.dll", StringComparison.Ordinal);
+
+            if (tspValue1 == -1 && tspValue2 == -1)
+            {
+                string message = "Another third-party TermService library is installed.\n" +
+                                 $"ServiceDll: {termSvcPath}";
+                _logger?.LogError(message);
+                throw new NotSupportedException(message);
+            }
+        }
+
+        public bool IsInstalled()
+        {
+            return GetTerminalServicePath().ToLower().IndexOf("rdpwrap.dll", StringComparison.CurrentCulture) > -1;
+        }
+
+        private string GetTerminalServicePath()
+        {
+            object termSvcParams = RegistryHelper.GetValue("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\TermService\\Parameters\\ServiceDll");
+            return (string)termSvcParams;
+        }
+
+        private void GetFileVersion(string fileName, out Version ver)
         {
             var fileVer = FileVersionInfo.GetVersionInfo(fileName);
             ver = new Version(
@@ -371,7 +352,7 @@ namespace RDPWrapInstaller
                 fileVer.ProductPrivatePart);
         }
 
-        private static byte[] GitIniFile()
+        private byte[] GitIniFile()
         {
             var client = new WebClient();
             // TODO: make this link 'customizable'
@@ -384,7 +365,7 @@ namespace RDPWrapInstaller
         /// <param name="serviceName"></param>
         /// <param name="serviceUsingPid"></param>
         /// <returns></returns>
-        private static List<ServiceController> GetSharedServices(string serviceName, int serviceUsingPid)
+        private List<ServiceController> GetSharedServices(string serviceName, int serviceUsingPid)
         {
             var services = ServiceController.GetServices();
             var sharedServices = new List<ServiceController>();
@@ -396,91 +377,96 @@ namespace RDPWrapInstaller
                     if (service.ServiceName != serviceName && service.GetServiceProcessId() == serviceUsingPid)
                     {
                         sharedServices.Add(service);
-                        sharedServiceText += string.Format("{0}, ", service.ServiceName);
+                        sharedServiceText += $"{service.ServiceName}, ";
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.Log(LogType.Warning, "Something went wrong while getting the process id.");
+                    _logger?.LogWarning("Something went wrong while getting the process id.");
                 }
             }
 
             if (sharedServices.Count != 0)
             {
-                _logger.Log(LogType.Information, "Shared services found: " + sharedServiceText);
+                _logger?.LogInformation("Shared services found: " + sharedServiceText);
             }
             else
             {
-                _logger.Log(LogType.Information, "Shared services not found");
+                _logger?.LogInformation("Shared services not found");
             }
 
             return sharedServices;
         }
 
-        private static void CheckTermsrvProcess()
+        private void CheckTermsrvProcess()
         {
-            int termServiceProcId = GetServicePid(_termService);
-            if (termServiceProcId == -1 || termServiceProcId == 0) // if process killed
+            int termSvcProcId = GetServicePid(TermServiceName);
+            if (termSvcProcId == -1 || termSvcProcId == 0) // if process killed
             {
-                ServiceConfigStart(_termService, ServiceStartMode.Automatic);
-                ServiceStart(_termService);
+                ServiceConfigStart(TermServiceName, ServiceStartMode.Automatic);
+                ServiceStart(TermServiceName);
             }
         }
 
-        private static void CheckTermsrvVersion()
+        private void CheckTermsrvVersion()
         {
-            GetFileVersion(ExpandPath(_termServicePath), out _fv);
-            string verText = string.Format("{0}.{1}.{2}.{3}", _fv.Major, _fv.Minor, _fv.Build, _fv.Revision);
-            byte supportedLvl;
+            string expandedTermSvcPath = ExpandPath(GetTerminalServicePath());
 
-            _logger.Log(LogType.Information, "Terminal Services version: " + verText);
-            if (_fv.Major == 5 && _fv.Minor == 1)
+            GetFileVersion(expandedTermSvcPath, out _termSvcVersion);
+            string verText = string.Format(
+                "{0}.{1}.{2}.{3}", 
+                _termSvcVersion.Major,
+                _termSvcVersion.Minor,
+                _termSvcVersion.Build,
+                _termSvcVersion.Revision);
+            int supportedLvl;
+
+            _logger?.LogInformation("Terminal Services version: " + verText);
+            if (_termSvcVersion.Major == 5 && _termSvcVersion.Minor == 1)
             {
                 if (_procArch == 32)
                 {
-                    _logger.Log(LogType.Warning,
+                    _logger?.LogWarning(
                         "Windows XP is not supported.\n" +
                         "You may take a look at RDP Realtime Patch by Stas''M for Windows XP\n" +
                         "Link: ");
                 }
                 if (_procArch == 64)
                 {
-                    _logger.Log(LogType.Warning, "Windows XP 64-bit Edition is not supported.");
+                    _logger?.LogWarning("Windows XP 64-bit Edition is not supported.");
                 }
-                return;
             }
-            if (_fv.Major == 5 && _fv.Minor == 2)
+            if (_termSvcVersion.Major == 5 && _termSvcVersion.Minor == 2)
             {
                 if (_procArch == 32)
                 {
-                    _logger.Log(LogType.Warning, "Windows Server 2003 is not supported.");
+                    _logger?.LogWarning("Windows Server 2003 is not supported.");
                 }
                 else if (_procArch == 64)
                 {
-                    _logger.Log(LogType.Warning, "Windows Server 2003 or XP 64-bit Edition is not supported.");
+                    _logger?.LogWarning("Windows Server 2003 or XP 64-bit Edition is not supported.");
                 }
-                return;
             }
+
             supportedLvl = 0;
-            if (_fv.Major == 6 && _fv.Minor == 0)
+            if (_termSvcVersion.Major == 6 && _termSvcVersion.Minor == 0)
             {
                 supportedLvl = 1;
-                if (_procArch == 32 && _fv.Revision == 6000 & _fv.Build == 16386)
+                if (_procArch == 32 && _termSvcVersion.Revision == 6000 & _termSvcVersion.Build == 16386)
                 {
-                    _logger.Log(LogType.Warning,
+                    _logger?.LogWarning(
                         "This version of Terminal Services may crash on logon attempt.\n" +
                         "It''s recommended to upgrade to Service Pack 1 or higher.");
                 }
-                return;
             }
 
-            if (_fv.Major == 6 && _fv.Minor == 1)
+            if (_termSvcVersion.Major == 6 && _termSvcVersion.Minor == 1)
             {
                 supportedLvl = 1;
             }
 
             string iniText = Encoding.UTF8.GetString(GitIniFile());
-            if (iniText.IndexOf($"[{verText}]") > -1)
+            if (iniText.IndexOf($"[{verText}]", StringComparison.Ordinal) > -1)
             {
                 supportedLvl = 2;
             }
@@ -488,27 +474,29 @@ namespace RDPWrapInstaller
             switch (supportedLvl)
             {
                 case 0:
-                    _logger.Log(LogType.Error, "This version of Terminal Services is not supported.");
-                    UpdateMsg();
+                    _logger?.LogError("This version of Terminal Services is not supported.");
+                    throw new OperatingSystemNotSupportedException();
+                    // LogUpdateMessage();
                     break;
                 case 1:
-                    _logger.Log(LogType.Warning,
+                    _logger?.LogWarning(
                         "This version of Terminal Services is supported partially.\n" +
                         "It means you may have some limitations such as only 2 concurrent sessions.");
-                    UpdateMsg();
+                    // LogUpdateMessage();
                     break;
                 case 2:
-                    _logger.Log(LogType.Information, "This version of Terminal Services is fully supported.");
+                    _logger?.LogInformation("This version of Terminal Services is fully supported.");
                     break;
             }
         }
 
-        private static void UpdateMsg()
-        {
-            _logger.Log(LogType.Information,
-                "Try running \"update.bat\" or \"RDPWInst - w\" to download latest INI file.\n" +
-                "If it doesn''t help, send your termsrv.dll to project developer for support.");
-        }
+        // TODO:
+        // private void LogUpdateMessage()
+        // {
+        //     _logger?.LogInformation(
+        //         "Try running \"update.bat\" or \"RDPWInst - w\" to download latest INI file.\n" +
+        //         "If it doesn''t help, send your termsrv.dll to project developer for support.");
+        // }
 
         /// <summary>
         /// Check operating system version
@@ -516,13 +504,13 @@ namespace RDPWrapInstaller
         /// <param name="minMajorVer">minimum major version</param>
         /// <param name="minMinorVer">minimum major version</param>
         /// <returns></returns>
-        private static bool CheckWin32Version(int minMajorVer, int minMinorVer)
+        private bool CheckWin32Version(int minMajorVer, int minMinorVer)
         {
             var osVersion = Environment.OSVersion.Version;
             return osVersion.Major > minMajorVer || osVersion.Minor > minMinorVer;
         }
 
-        private static string ExpandPath(string path)
+        private string ExpandPath(string path)
         {
             if (_procArch == 64)
             {
@@ -531,173 +519,198 @@ namespace RDPWrapInstaller
             return Environment.ExpandEnvironmentVariables(path);
         }
 
-        public static async Task Install()
+        /// <summary>
+        /// Install RDPWrapper Library
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="UnsupportedArchitectureException">When processor architecture not supported</exception>
+        /// <exception cref="RdpWrapperAlreadyInstalledException">When RDPWrapper Library installed</exception>
+        public async Task Install()
         {
             if (!CheckWin32Version(6, 0))
             {
-                _logger.Log(LogType.Error,
+                _logger?.LogError(
                     "Unsupported Windows version:\n" +
                     "  only >= 6.0 (Vista, Server 2008 and newer) are supported.");
                 return;
             }
-            if (!SupportedArchitecture())
+
+            var data = GetSupportedArchitecture();
+            if (data is {supported: false} or {architecture: null})
             {
-                _logger.Log(LogType.Error, "Unsupported processor architecture.");
-                return;
+                _logger?.LogError("Unsupported processor architecture.");
+                throw new UnsupportedArchitectureException();
             }
-            CheckInstall();
+            _procArch = data.architecture.Value;
 
-            if (_installed)
+            CheckSupported();
+            CheckAnotherLibraryInstalled();
+
+            if (IsInstalled())
             {
-                _logger.Log(LogType.Information, "RDP Wrapper Library is already installed.");
-                return;
+                _logger?.LogInformation("RDP Wrapper Library is already installed.");
+                throw new RdpWrapperAlreadyInstalledException();
             }
-            _logger.Log(LogType.Information, "Installing...");
-
-            _wrapPath = @"C:\Program Files\RDP Wrapper\rdpwrap.dll";
-
+            _logger?.LogInformation("Installing...");
+            
             CheckTermsrvVersion();
             CheckTermsrvProcess();
 
-            _logger.Log(LogType.Information, "Extracting files...");
-            _online = true;
+            _logger?.LogInformation("Extracting files...");
             await ExtractFiles();
 
-            _logger.Log(LogType.Information, "Configuring library...");
+            _logger?.LogInformation("Configuring library...");
             SetWrapperDll();
 
-            _logger.Log(LogType.Information, "Checking dependencies...");
+            _logger?.LogInformation("Checking dependencies...");
             CheckTermsrvDependencies();
 
-            int termServiceId = GetServicePid(_termService);
+            int termServiceId = GetServicePid(TermServiceName);
             
-            _sharedSvcs = GetSharedServices(_termService, termServiceId);
+            var sharedSvcs = GetSharedServices(TermServiceName, termServiceId);
             await Task.Delay(1000);
             
-            _logger.Log(LogType.Information, "Terminating service...");
+            _logger?.LogInformation("Terminating service...");
             KillProcess(termServiceId);
             await Task.Delay(1000);
 
-            if (_sharedSvcs.Count != 0)
+            if (sharedSvcs.Count != 0)
             {
-                foreach (ServiceController svc in _sharedSvcs)
+                foreach (var svcController in sharedSvcs)
                 {
-                    ServiceStart(svc.ServiceName);
+                    ServiceStart(svcController.ServiceName);
                 }
             }
             
-            ServiceStart(_termService);
+            ServiceStart(TermServiceName);
             await Task.Delay(1000);
 
-            _logger.Log(LogType.Information, "Configuring registry...");
+            _logger?.LogInformation("Configuring registry...");
             TsConfigRegistry(true);
             
-            _logger.Log(LogType.Information, "Configuring firewall...");
+            _logger?.LogInformation("Configuring firewall...");
             await TsConfigFirewall(true);
 
-            _logger.Log(LogType.Information, "Successfully installed.");
+            _logger?.LogInformation("Successfully installed.");
         }
-
-        public static async Task Uninstall()
+        
+        /// <summary>
+        /// Uninstall RDPWrapper Library
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="UnsupportedArchitectureException">When processor architecture not supported</exception>
+        /// <exception cref="RdpWrapperNotInstalledException">When RDPWrapper Library not installed</exception>
+        public async Task Uninstall()
         {
+            _initTermSvcPath = ExpandPath(GetTerminalServicePath());
+            
             if (!CheckWin32Version(6, 0))
             {
-                _logger.Log(LogType.Error,
+                _logger?.LogError(
                     "Unsupported Windows version:\n" +
                     "   only >= 6.0 (Vista, Server 2008 and newer) are supported.");
                 return;
             }
-            if (!SupportedArchitecture())
+            
+            var data = GetSupportedArchitecture();
+            if (data is {supported: false} or {architecture: null})
             {
-                _logger.Log(LogType.Error, "Unsupported processor architecture.");
-                return;
+                _logger?.LogError("Unsupported processor architecture.");
+                throw new UnsupportedArchitectureException();
             }
-            CheckInstall();
+            _procArch = data.architecture.Value;
 
-            if (!_installed)
+            if (!IsInstalled())
             {
-                _logger.Log(LogType.Information, "RDP Wrapper Library is not installed.");
-                return;
+                _logger?.LogInformation("RDP Wrapper Library is not installed.");
+                throw new RdpWrapperNotInstalledException();
             }
-            _logger.Log(LogType.Information, "Uninstalling...");
+            _logger?.LogInformation("Uninstalling...");
             
             CheckTermsrvProcess();
 
-            _logger.Log(LogType.Information, "Resetting service library...");
+            _logger?.LogInformation("Resetting service library...");
             ResetServiceDll();
 
-            int termServiceId = GetServicePid(_termService);
+            int termServiceId = GetServicePid(TermServiceName);
             
-            _sharedSvcs = GetSharedServices(_termService, termServiceId);
+            var sharedSvcs = GetSharedServices(TermServiceName, termServiceId);
             await Task.Delay(1000);
             
-            _logger.Log(LogType.Information, "Terminating service...");
+            _logger?.LogInformation("Terminating service...");
             KillProcess(termServiceId);
             await Task.Delay(1000);
             
-            _logger.Log(LogType.Information, "Removing files...");
+            _logger?.LogInformation("Deleting files...");
             DeleteFiles();
             await Task.Delay(1000);
             
-            if (_sharedSvcs.Count != 0)
+            if (sharedSvcs.Count != 0)
             {
-                foreach (ServiceController svc in _sharedSvcs)
+                foreach (var svcController in sharedSvcs)
                 {
-                    ServiceStart(svc.ServiceName);
+                    ServiceStart(svcController.ServiceName);
                 }
             }
             
-            ServiceStart(_termService);
+            ServiceStart(TermServiceName);
 
-            _logger.Log(LogType.Information, "Configuring registry...");
+            _logger?.LogInformation("Configuring registry...");
             TsConfigRegistry(false);
             
-            _logger.Log(LogType.Information, "Configuring firewall...");
+            _logger?.LogInformation("Configuring firewall...");
             await TsConfigFirewall(false);
 
-            _logger.Log(LogType.Information, "Successfully uninstalled.");
+            _logger?.LogInformation("Successfully uninstalled.");
         }
 
-        public static async Task Reload()
+        public async Task Reload()
         {
             if (!CheckWin32Version(6, 0))
             {
-                _logger.Log(LogType.Error,
+                _logger?.LogError(
                     "Unsupported Windows version:\n" +
                     "   only >= 6.0 (Vista, Server 2008 and newer) are supported.");
                 return;
             }
-            if (!SupportedArchitecture())
+            
+            var data = GetSupportedArchitecture();
+            if (data is {supported: false} or {architecture: null})
             {
-                _logger.Log(LogType.Error, "Unsupported processor architecture.");
-                return;
+                _logger?.LogError("Unsupported processor architecture.");
+                throw new UnsupportedArchitectureException();
             }
-            CheckInstall();
-
-            _logger.Log(LogType.Information, "Restarting...");
+            _procArch = data.architecture.Value;
+            
+            if (!IsInstalled())
+            {
+                _logger?.LogInformation("RDP Wrapper Library is not installed.");
+                throw new RdpWrapperNotInstalledException();
+            }
+            _logger?.LogInformation("Restarting...");
             
             CheckTermsrvProcess();
 
-            int termServiceId = GetServicePid(_termService);
+            int termServiceId = GetServicePid(TermServiceName);
             
-            _sharedSvcs = GetSharedServices(_termService, termServiceId);
+            var sharedSvcs = GetSharedServices(TermServiceName, termServiceId);
             await Task.Delay(1000);
             
-            _logger.Log(LogType.Information, "Terminating service...");
+            _logger?.LogInformation("Terminating service...");
             KillProcess(termServiceId);
             await Task.Delay(1000);
             
-            if (_sharedSvcs.Count != 0)
+            if (sharedSvcs.Count != 0)
             {
-                foreach (ServiceController svc in _sharedSvcs)
+                foreach (var svcController in sharedSvcs)
                 {
-                    ServiceStart(svc.ServiceName);
+                    ServiceStart(svcController.ServiceName);
                 }
             }
             
-            ServiceStart(_termService);
+            ServiceStart(TermServiceName);
 
-            _logger.Log(LogType.Information, "Successfully reloaded...");
+            _logger?.LogInformation("Successfully reloaded...");
         }
     }
 }

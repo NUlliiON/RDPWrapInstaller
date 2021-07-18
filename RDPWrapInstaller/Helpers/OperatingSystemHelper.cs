@@ -42,9 +42,24 @@ namespace RDPWrapInstaller.Helpers
 
         public enum Platform
         {
+            /// <summary>
+            /// Intel x86
+            /// </summary>
             X86,
+            
+            /// <summary>
+            /// Intel or AMD x64
+            /// </summary>
             X64,
+            
+            /// <summary>
+            /// Itaniumbased x64
+            /// </summary>
             IA64,
+            
+            /// <summary>
+            /// Unknown
+            /// </summary>
             Unknown
         }
 
